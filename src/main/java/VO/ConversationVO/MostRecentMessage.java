@@ -8,15 +8,4 @@ public class MostRecentMessage{
 	private String content;
 	private long timestamp;
 
-//	public int getUserId(){
-//		return userId;
-//	}
-//
-//	public String getContent(){
-//		return content;
-//	}
-//
-//	public long getTimestamp(){
-//		return timestamp;
-//	}
 }

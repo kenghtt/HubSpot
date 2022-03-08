@@ -5,7 +5,6 @@ import VO.MessagesVO.Messages;
 import VO.MessagesVO.MessagesItem;
 import VO.MessagesVO.UsersItem;
 import com.google.gson.Gson;
-
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -23,11 +22,12 @@ public class HubSpotApplication {
     public static void main(String[] args) throws IOException, InterruptedException {
 
         HttpResponse<String> response = makeGetCall();
+
+        // Convert response to Messages Object
         Messages messagesResponse = gson.fromJson(response.body(), Messages.class);
         List<MessagesItem> messages = messagesResponse.getMessages();
-
         HashMap<Integer, List<MessagesItem>> messageMap = new HashMap<>();
-        HashMap<Integer, UsersItem> userMap = new HashMap<>();
+        HashMap<Long, ConversationsItem> timesMap = new HashMap<>();
 
         int myUserId = messagesResponse.getUserId();
 
@@ -35,44 +35,35 @@ public class HubSpotApplication {
             int fromUserId = message.getFromUserId();
             int toUserId = message.getToUserId();
 
-            if (message.getFromUserId() != myUserId) {              // NOT SAME AS MY USER ID
+            // NOT SAME AS MY USER ID
+            if (message.getFromUserId() != myUserId) {
                 addToMessageMap(fromUserId, messageMap, message);
 
-            } else {                                                // SAME AS USER ID
+            } else {  // SAME AS USER ID
                 addToMessageMap(toUserId, messageMap, message);
             }
         }
 
-
         List<UsersItem> users = messagesResponse.getUsers();
-
         List<ConversationsItem> conversations = new ArrayList<>();
-
-        for (UsersItem user : users) {
-            userMap.put(user.getId(), user);
-        }
-
         ArrayList<Long> times = new ArrayList<>();
-        HashMap<Long, ConversationsItem> timesMap = new HashMap<>();
 
-        for (Map.Entry<Integer, List<MessagesItem>> set : messageMap.entrySet()) {
-
-            int userId = set.getKey();
-            List<MessagesItem> msg = set.getValue();
-
-            long mostRecentTimeStamp = 0;
+        // Iterate through users
+        for (UsersItem user : users) {
+            int userId = user.getId();
+            List<MessagesItem> msg = messageMap.get(userId); // get access to all messages for that user
 
             ConversationsItem conversationsItem = new ConversationsItem();
-            conversationsItem.setAvatar(userMap.get(userId).getAvatar());
-            conversationsItem.setFirstName(userMap.get(userId).getFirstName());
-            conversationsItem.setLastName(userMap.get(userId).getLastName());
+            conversationsItem.setAvatar(user.getAvatar());
+            conversationsItem.setFirstName(user.getFirstName());
+            conversationsItem.setLastName(user.getLastName());
             conversationsItem.setTotalMessages(msg.size());
-
-
             conversationsItem.setUserId(userId);
 
-
             MostRecentMessage mostRecentMessage = new MostRecentMessage();
+            long mostRecentTimeStamp = 0;
+
+            // Capture most recent message from that userId
             for (MessagesItem m : msg) {
                 if (mostRecentTimeStamp < m.getTimestamp()) {
                     mostRecentTimeStamp = m.getTimestamp();
@@ -81,32 +72,26 @@ public class HubSpotApplication {
                     mostRecentMessage.setTimestamp(mostRecentTimeStamp);
                 }
             }
+            conversationsItem.setMostRecentMessage(mostRecentMessage);
 
-            conversationsItem.setMostRecentMessage(mostRecentMessage); // need to set this still
-
-            long time = conversationsItem.getMostRecentMessage().getTimestamp();
-
-            times.add(time);
-
-            timesMap.put(time, conversationsItem);
-
+            long recentTime = conversationsItem.getMostRecentMessage().getTimestamp();
+            times.add(recentTime);
+            timesMap.put(recentTime, conversationsItem);
         }
 
-
+        // Sort most recent time from Newest to Oldest
         Collections.sort(times);
         Collections.reverse(times);
 
-
+        // Add based on most recent time
         for (int i = 0; i < times.size(); i++) {
             ConversationsItem conversationsItem = timesMap.get(times.get(i));
             conversations.add(conversationsItem);
-
         }
 
-
+        // ADD to Conversation List
         Conversation conversation = new Conversation();
         conversation.setConversations(conversations);
-
 
         // Make Post Call
         HttpResponse<String> responsePost = makePostCall(conversation);
@@ -114,8 +99,6 @@ public class HubSpotApplication {
         System.out.println("Status Code: " + responsePost.statusCode());
         System.out.println("Response Body: " + responsePost.body());
     }
-
-
 
     static HttpResponse<String> makeGetCall() throws IOException, InterruptedException {
         HttpRequest request = HttpRequest.newBuilder()
