@@ -13,8 +13,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.*;
 
-public class HubSpotGET {
-
+public class HubSpotApplication2 {
 
     private static final String GET_API_URL = "https://candidate.hubteam.com/candidateTest/v3/problem/dataset?userKey=baa4f01d038a445edb7f280f2a4d";
     private static final String POST_API_URL = "https://candidate.hubteam.com/candidateTest/v3/problem/result?userKey=baa4f01d038a445edb7f280f2a4d";
@@ -26,11 +25,14 @@ public class HubSpotGET {
         HttpResponse<String> response = makeGetCall();
         Messages messagesResponse = gson.fromJson(response.body(), Messages.class);
         List<MessagesItem> messages = messagesResponse.getMessages();
-        int lengthOfMessages = messages.size();
 
         HashMap<Integer, List<MessagesItem>> messageMap = new HashMap<>();
-        int myUserId = messagesResponse.getUserId();
+        HashMap<Integer, UsersItem> userMap = new HashMap<>();
 
+        HashMap<Long, ConversationsItem> timesMap = new HashMap<>();
+
+
+        int myUserId = messagesResponse.getUserId();
 
         for (MessagesItem message : messages) {
             int fromUserId = message.getFromUserId();
@@ -47,35 +49,38 @@ public class HubSpotGET {
 
         List<UsersItem> users = messagesResponse.getUsers();
 
-        List<ConversationsItem> conversations = new ArrayList<ConversationsItem>();
+        List<ConversationsItem> conversations = new ArrayList<>();
 
-        HashMap<Integer, UsersItem> userMap = new HashMap<>();
-
-        for (int j = 0; j < users.size(); j++) {
-            userMap.put(users.get(j).getId(), users.get(j));
-        }
-
+        ArrayList<UsersItem> userArray = new ArrayList<>();  // might not need this
         ArrayList<Long> times = new ArrayList<>();
-        HashMap<Long, ConversationsItem> timesMap = new HashMap<>();
 
-        for (Map.Entry<Integer, List<MessagesItem>> set : messageMap.entrySet()) {
+        for (UsersItem user : users) {
+            userMap.put(user.getId(), user);
+            userArray.add(user);  // contains each user object
 
-            int userId = set.getKey();
-            List<MessagesItem> msg = set.getValue();
+            int userId = user.getId();
+
+
+
+            // Since already looping each user, not get mapping of message then...
+            //  We loop through the all messages for that user??? YESSS I think So
+
+            List<MessagesItem> msg = messageMap.get(userId); // got access to all messages for that user
 
             long mostRecentTimeStamp = 0;
+            MostRecentMessage mostRecentMessage = new MostRecentMessage();
+
+
 
             ConversationsItem conversationsItem = new ConversationsItem();
-            conversationsItem.setAvatar(userMap.get(userId).getAvatar());
-            conversationsItem.setFirstName(userMap.get(userId).getFirstName());
-            conversationsItem.setLastName(userMap.get(userId).getLastName());
+            conversationsItem.setAvatar(user.getAvatar());
+            conversationsItem.setFirstName(user.getFirstName());
+            conversationsItem.setLastName(user.getLastName());
             conversationsItem.setTotalMessages(msg.size());
 
 
             conversationsItem.setUserId(userId);
 
-
-            MostRecentMessage mostRecentMessage = new MostRecentMessage();
             for (MessagesItem m : msg) {
                 if (mostRecentTimeStamp < m.getTimestamp()) {
                     mostRecentTimeStamp = m.getTimestamp();
@@ -84,17 +89,22 @@ public class HubSpotGET {
                     mostRecentMessage.setTimestamp(mostRecentTimeStamp);
                 }
             }
-
             conversationsItem.setMostRecentMessage(mostRecentMessage); // need to set this still
 
-            long time = conversationsItem.getMostRecentMessage().getTimestamp();
 
-            times.add(time);
 
-            timesMap.put(time, conversationsItem);
+            // ADD to Conversation List    MAYBE DO NOT DO THIS YET, IT IS DOWN LOWER
+//            conversations.add(conversationsItem);
+            long recentTime = conversationsItem.getMostRecentMessage().getTimestamp();
+
+            times.add(recentTime);
+
+            timesMap.put(recentTime, conversationsItem);
+
+
+
 
         }
-
 
         Collections.sort(times);
         Collections.reverse(times);
@@ -106,7 +116,7 @@ public class HubSpotGET {
 
         }
 
-
+        // ADD to Conversation List
         Conversation conversation = new Conversation();
         conversation.setConversations(conversations);
 
