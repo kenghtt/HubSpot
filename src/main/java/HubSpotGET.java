@@ -17,51 +17,30 @@ public class HubSpotGET {
 
 
     private static final String GET_API_URL = "https://candidate.hubteam.com/candidateTest/v3/problem/dataset?userKey=baa4f01d038a445edb7f280f2a4d";
+    private static final String POST_API_URL = "https://candidate.hubteam.com/candidateTest/v3/problem/result?userKey=baa4f01d038a445edb7f280f2a4d";
+    private static final Gson gson = new Gson();
+    private static final HttpClient client = HttpClient.newHttpClient();
 
     public static void main(String[] args) throws IOException, InterruptedException {
 
-        HttpClient client = HttpClient.newHttpClient();
-        HttpRequest request = HttpRequest.newBuilder()
-                .GET()
-                .header("accept", "application/json")
-                .uri(URI.create(GET_API_URL))
-                .build();
-
-        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-
-        Gson gson = new Gson();
+        HttpResponse<String> response = makeGetCall();
         Messages messagesResponse = gson.fromJson(response.body(), Messages.class);
         List<MessagesItem> messages = messagesResponse.getMessages();
-
         int lengthOfMessages = messages.size();
 
-        HashMap<Integer, List<MessagesItem>> hashMap = new HashMap<>();
+        HashMap<Integer, List<MessagesItem>> messageMap = new HashMap<>();
         int myUserId = messagesResponse.getUserId();
 
 
-        for (int i = 0; i < lengthOfMessages; i++) {
+        for (MessagesItem message : messages) {
+            int fromUserId = message.getFromUserId();
+            int toUserId = message.getToUserId();
 
-            if (messages.get(i).getFromUserId() != myUserId) {  // NOT SAME AS MY USER ID
-                if (!hashMap.containsKey(messages.get(i).getFromUserId())) {
-                    List<MessagesItem> messageList = new ArrayList<>();
-                    messageList.add(messages.get(i));
-                    hashMap.put(messages.get(i).getFromUserId(), messageList);
-                } else {
-                    List<MessagesItem> messageList = hashMap.get(messages.get(i).getFromUserId());
-                    messageList.add(messages.get(i));
-                    hashMap.put(messages.get(i).getFromUserId(), messageList);
-                }
+            if (message.getFromUserId() != myUserId) {              // NOT SAME AS MY USER ID
+                addToMessageMap(fromUserId, messageMap, message);
 
-            } else {  // SAME AS USER ID
-                if (!hashMap.containsKey(messages.get(i).getToUserId())) {
-                    List<MessagesItem> messageList = new ArrayList<>();
-                    messageList.add(messages.get(i));
-                    hashMap.put(messages.get(i).getToUserId(), messageList);
-                } else {
-                    List<MessagesItem> messageList = hashMap.get(messages.get(i).getToUserId());
-                    messageList.add(messages.get(i));
-                    hashMap.put(messages.get(i).getToUserId(), messageList);
-                }
+            } else {                                                // SAME AS USER ID
+                addToMessageMap(toUserId, messageMap, message);
             }
         }
 
@@ -79,7 +58,7 @@ public class HubSpotGET {
         ArrayList<Long> times = new ArrayList<>();
         HashMap<Long, ConversationsItem> timesMap = new HashMap<>();
 
-        for (Map.Entry<Integer, List<MessagesItem>> set : hashMap.entrySet()) {
+        for (Map.Entry<Integer, List<MessagesItem>> set : messageMap.entrySet()) {
 
             int userId = set.getKey();
             List<MessagesItem> msg = set.getValue();
@@ -97,8 +76,8 @@ public class HubSpotGET {
 
 
             MostRecentMessage mostRecentMessage = new MostRecentMessage();
-            for(MessagesItem m : msg){
-                if( mostRecentTimeStamp < m.getTimestamp()){
+            for (MessagesItem m : msg) {
+                if (mostRecentTimeStamp < m.getTimestamp()) {
                     mostRecentTimeStamp = m.getTimestamp();
                     mostRecentMessage.setUserId(m.getFromUserId());
                     mostRecentMessage.setContent(m.getContent());
@@ -113,49 +92,62 @@ public class HubSpotGET {
             times.add(time);
 
             timesMap.put(time, conversationsItem);
-//            conversations.add(conversationsItem);
 
         }
-
 
 
         Collections.sort(times);
         Collections.reverse(times);
 
 
-        for(int i = 0; i< times.size(); i++){
-            ConversationsItem conversationsItem =  timesMap.get(times.get(i));
+        for (int i = 0; i < times.size(); i++) {
+            ConversationsItem conversationsItem = timesMap.get(times.get(i));
             conversations.add(conversationsItem);
 
         }
-
-
 
 
         Conversation conversation = new Conversation();
         conversation.setConversations(conversations);
 
 
+        // Make Post Call
+        HttpResponse<String> responsePost = makePostCall(conversation);
+
+        System.out.println("Status Code: " + responsePost.statusCode());
+        System.out.println("Response Body: " + responsePost.body());
+    }
 
 
 
-        String postEndpoint = "https://candidate.hubteam.com/candidateTest/v3/problem/result?userKey=baa4f01d038a445edb7f280f2a4d";
+    static HttpResponse<String> makeGetCall() throws IOException, InterruptedException {
+        HttpRequest request = HttpRequest.newBuilder()
+                .GET()
+                .header("accept", "application/json")
+                .uri(URI.create(GET_API_URL))
+                .build();
+        return client.send(request, HttpResponse.BodyHandlers.ofString());
+    }
 
-        var requestPost = HttpRequest.newBuilder()
-                .uri(URI.create(postEndpoint))
+    static HttpResponse<String> makePostCall(Conversation conversation) throws IOException, InterruptedException {
+        HttpRequest requestPost = HttpRequest.newBuilder()
+                .uri(URI.create(POST_API_URL))
                 .header("Content-Type", "application/json")
-//                .POST(HttpRequest.BodyPublishers.ofString(person.toString()))
                 .POST(HttpRequest.BodyPublishers.ofString(gson.toJson(conversation)))
                 .build();
-
-
-        var clientPost = HttpClient.newHttpClient();
-
-        var responsePost = clientPost.send(requestPost, HttpResponse.BodyHandlers.ofString());
-
-        System.out.println(responsePost.statusCode());
-        System.out.println(responsePost.body());
-
-        System.out.println("");
+        HttpClient clientPost = HttpClient.newHttpClient();
+        return clientPost.send(requestPost, HttpResponse.BodyHandlers.ofString());
     }
+
+    static void addToMessageMap(int userId, HashMap<Integer, List<MessagesItem>> messageMap, MessagesItem message) {
+        List<MessagesItem> messageList;
+        if (!messageMap.containsKey(userId)) {
+            messageList = new ArrayList<>();
+        } else {
+            messageList = messageMap.get(userId);
+        }
+        messageList.add(message);
+        messageMap.put(userId, messageList);
+    }
+
 }
